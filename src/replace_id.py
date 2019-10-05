@@ -1,0 +1,337 @@
+import psycopg2
+from psycopg2.extras import DictCursor, RealDictCursor
+
+
+class DatabaseUtils:
+    """
+    Some utils to manage database conections, selects, etc.
+    """
+
+    def get_connection(self, params):
+        """
+        OPen a connection to Postgres database.
+        :param params: a dict with connection parameters: host, user, password, schema and database
+        :return: the opened connection
+        """
+        conn_string = "host='{host}' dbname='{db_name}' user='{user}' password='{password}' options='-c search_path={schema},public'"
+
+        conn_string = conn_string.format(
+            host=params["host"],
+            user=params["user"],
+            password=params["password"],
+            schema=params["schema"],
+            db_name=params["db_name"],
+        )
+        connection = psycopg2.connect(conn_string)
+        connection.autocommit = False
+        return connection
+
+    def select(self, connection, select_command):
+        """
+        Perform a select command.
+        :param connection: a opened connection.
+        :param select_command: the select command
+        :return: the rows returned by the select command.
+        """
+        cursor = connection.cursor(cursor_factory=RealDictCursor)
+        cursor.execute(select_command)
+        rows = cursor.fetchall()
+        return rows
+
+    def execute(self, connection, sql_command):
+        """
+        Perform a SQL command.
+        :param connection: a opened connection.
+        :param select_command: the select command
+        """
+        cursor = connection.cursor()
+        cursor.execute(sql_command)
+
+
+class IdReplacer:
+    """
+    Perform the ID replace.
+    """
+
+    def execute(self, *args, **kwargs):
+        """
+        Replace the sequencial Id by the UUID.
+        :param args: some arguments.
+        :param kwargs: some key-arguments.
+
+        """
+        params = kwargs.get('params')
+        if params is None:
+            raise Exception('Params not defined')
+        utils = DatabaseUtils()
+        conn = utils.get_connection(params)
+        try:
+            # TODO como excluir a view
+            with conn:
+                # Primary Key
+                primairy_keys = self._get_primairy_keys(conn)
+                foreign_keys = self._get_foreign_keys(conn)
+                self._set_up(conn, *args, **kwargs, rows=primairy_keys, utils=utils)
+                try:
+                    print("Getting primary keys")
+                    kwargs['rows'] = primairy_keys
+                    print("Adding temporary column")
+                    self._add_temporary_column(conn, *args, **kwargs)
+                    print("Assign temporary column")
+                    self._assign_value_to_temporary_pk_column(conn, *args, **kwargs)
+                    print("Adding serial column")
+                    self._add_serial_column(conn, *args, **kwargs)
+                    print("Copying ok to serial column")
+                    self._copy_pk_column_to_serial_column(conn, *args, **kwargs)
+                    # Foreign Key
+                    print("Getting foreign keys")
+                    kwargs['rows'] = foreign_keys
+                    print("Dropping FK constraints")
+                    self._drop_fk_constraint(conn, *args, **kwargs)
+                    print("Changing FKs to varchar")
+                    self._change_fk_column_to_varchar(conn, *args, **kwargs)
+                    # self._add_temporary_column(conn, *args, **kwargs)
+                    # self._copy_fk_column_to_temporary_fk_column(conn, *args, **kwargs)
+                finally:
+                    kwargs['rows'] = primairy_keys
+                    self._tear_down(conn, *args, **kwargs)
+        finally:
+            conn.close()
+
+    def _set_up(self, connection, *args, **kwargs):
+        pass
+
+    def _tear_down(self, connection, *args, **kwargs):
+        pass
+
+    def _build_sql_to_alter_column_datatype(self, table_name, column_name, data_type):
+        sql = "alter table {table_name} alter column {column_name} type {data_type}".format(
+            table_name=table_name,
+            column_name=column_name,
+            data_type=data_type,
+        )
+        return sql
+
+    def _change_fk_column_to_varchar(self, connection, *args, **kwargs):
+        rows = kwargs['rows']
+        utils = DatabaseUtils()
+        for row in rows:
+            schema_name = row['table_schema']
+            table_name = row['table_name']
+            table_name = self._build_table_name(schema_name, table_name)
+            column_name = row['column_name']
+
+            sql = self._build_sql_to_alter_column_datatype(table_name, column_name, 'varchar')
+            if sql is not None:
+                utils.execute(connection, sql)
+
+    def _build_sql_to_drop_constraint(self, table_name, constraint_name):
+        sql = "alter table {table_name} drop constraint if exists {constraint_name}".format(
+            table_name=table_name,
+            constraint_name=constraint_name,
+        )
+        return sql
+
+    def _drop_fk_constraint(self, connection, *args, **kwargs):
+        rows = kwargs['rows']
+        utils = DatabaseUtils()
+        for row in rows:
+            schema_name = row['table_schema']
+            table_name = row['table_name']
+            table_name = self._build_table_name(schema_name, table_name)
+            constraint_name = row['constraint_name']
+
+            sql = self._build_sql_to_drop_constraint(table_name, constraint_name)
+            if sql is not None:
+                utils.execute(connection, sql)
+
+    def _copy_fk_column_to_temporary_fk_column(self, connection, *args, **kwargs):
+        rows = kwargs['rows']
+        utils = DatabaseUtils()
+
+        for row in rows:
+            table_name = self._build_table_name(row['table_schema'], row['table_name'])
+            column_name = row['column_name']
+            temp_name = self._build_temp_column_name(column_name)
+            foreign_table_name = self._build_table_name(row['foreign_table_schema'], row['foreign_table_name'])
+            pk = row['foreign_column_name']
+            foreign_column_name = self._build_temp_column_name(pk)
+
+            sql = """
+            update {table_name} a 
+            set {temp_column} = x.{foreign_column_name}
+            from {foreign_table_name} x
+            where a.{column_name} = x.{pk}
+            """.format(
+                table_name=table_name,
+                temp_column=temp_name,
+                column_name=column_name,
+                foreign_table_name=foreign_table_name,
+                foreign_column_name=foreign_column_name,
+                pk=pk,
+            )
+            utils.execute(connection, sql)
+
+    def _build_sql_to_update_column(self, table_name, column_name, value):
+        sql = "update {table_name} set {column_name} = {value}".format(
+            table_name=table_name,
+            column_name=column_name,
+            value=value,
+        )
+        return sql
+
+    def _copy_pk_column_to_serial_column(self, connection, *args, **kwargs):
+        serial_name = kwargs['params']['serial_name']
+        rows = kwargs['rows']
+        utils = DatabaseUtils()
+
+        for row in rows:
+            table_schema = row['table_schema']
+            table_name = self._build_table_name(table_schema, row['table_name'])
+            column_name = row['column_name']
+
+            sql = self._build_sql_to_update_column(table_name, serial_name, column_name)
+            if sql is not None:
+                utils.execute(connection, sql)
+
+    def _build_primary_key_update_command(self, *args, **kwargs):
+        return kwargs['sql'].format(value='gen_random_uuid()')
+
+    def _assign_value_to_temporary_pk_column(self, connection, *args, **kwargs):
+        rows = kwargs['rows']
+        utils = DatabaseUtils()
+
+        for row in rows:
+            data_type = row['data_type']
+            table_schema = row['table_schema']
+            table_name = self._build_table_name(table_schema, row['table_name'])
+            column_name = self._build_temp_column_name(row['column_name'])
+
+            update_command = self._build_sql_to_update_column(table_name, column_name, '{value}')
+            update_command = self._build_primary_key_update_command(
+                *args,
+                **kwargs,
+                connection=connection,
+                table_schema=table_schema,
+                table_name=table_name,
+                column_name=column_name,
+                data_type=data_type,
+                utils=utils,
+                update_command=update_command,
+            )
+            if update_command is not None:
+                utils.execute(connection, update_command)
+
+    def _get_primairy_keys(self, connection):
+        sql = """
+        select tc.table_schema, tc.table_name, kcu.column_name, c.data_type
+        from information_schema.table_constraints as tc
+        inner join information_schema.key_column_usage kcu on tc.constraint_name = kcu.constraint_name
+        inner join information_schema.columns c on tc.table_schema = c.table_schema and tc.table_name = c.table_name and kcu.column_name = c.column_name
+        where constraint_type = 'PRIMARY KEY'
+        and data_type in ('integer', 'bigint')
+        """
+        rows = DatabaseUtils().select(connection, sql)
+        return rows
+
+    def _get_foreign_keys(self, connection):
+        sql = """
+        select tc.table_schema, tc.table_name, kcu.column_name, c.data_type, ccu.table_schema as foreign_table_schema, 
+          ccu.table_name as foreign_table_name, ccu.column_name as foreign_column_name, tc.constraint_name
+        from information_schema.table_constraints as tc
+        inner join information_schema.key_column_usage kcu on tc.constraint_name = kcu.constraint_name
+        inner join information_schema.constraint_column_usage ccu on ccu.constraint_name = tc.constraint_name
+        inner join information_schema.columns c on tc.table_schema = c.table_schema and tc.table_name = c.table_name and kcu.column_name = c.column_name
+        where constraint_type = 'FOREIGN KEY'
+        and data_type in ('integer', 'bigint')
+        """
+        rows = DatabaseUtils().select(connection, sql)
+        return rows
+
+    def _build_temp_column_name(self, column_name):
+        return '%s_temp2replace' % column_name
+
+    def _build_table_name(self, schema_name, table_name):
+        return '%s.%s' % (schema_name, table_name)
+
+    def _build_sql_to_add_column(self, table_name, column_name, data_type):
+        sql = "alter table {table_name} add column if not exists {column_name} {data_type}".format(
+            table_name=table_name,
+            column_name=column_name,
+            data_type=data_type,
+        )
+        return sql
+
+    def _add_serial_column(self, connection, *args, **kwargs):
+        column_name = kwargs['params']['serial_name']
+        rows = kwargs['rows']
+        utils = DatabaseUtils()
+
+        for row in rows:
+            schema_name = row['table_schema']
+            table_name = row['table_name']
+            data_type = row['data_type']
+
+            table_name = self._build_table_name(schema_name, table_name)
+
+            sql = self._build_sql_to_add_column(table_name, column_name, data_type)
+            if sql is not None:
+                utils.execute(connection, sql)
+
+    def _add_temporary_column(self, connection, *args, **kwargs):
+        rows = kwargs['rows']
+        utils = DatabaseUtils()
+        for row in rows:
+            schema_name = row['table_schema']
+            table_name = row['table_name']
+            column_name = row['column_name']
+
+            table_name = self._build_table_name(schema_name, table_name)
+            column_name = self._build_temp_column_name(column_name)
+
+            sql = self._build_sql_to_add_column(table_name, column_name, 'UUID')
+            if sql is not None:
+                utils.execute(connection, sql)
+
+
+class MyReplacer(IdReplacer):
+    def _set_up(self, connection, *args, **kwargs):
+        super()._set_up(connection, *args, **kwargs)
+        utils = kwargs['utils']
+        rows = kwargs['rows']
+        schemas = set([row['table_schema'] for row in rows])
+        for schema in schemas:
+            sql = """
+            drop index if exists {schema}.idx_unique_primary_id_per_gender;
+            drop trigger if exists trigger_animal_detail on {schema}.animaldetail;
+            drop view if exists {schema}.animalgroupeventsummary cascade;
+            alter table if exists {schema}.healthtask drop constraint if exists healthtask_general_group_type_id_check;
+            """.format(schema=schema)
+            utils.execute(connection, sql)
+
+    def _tear_down(self, connection, *args, **kwargs):
+        pass
+
+    def _build_primary_key_update_command(self, *args, **kwargs):
+        table_name = kwargs['table_name']
+        if table_name != 'public.stage':
+            return None
+        column_name = kwargs['column_name']
+        sql = "update {table_name} set {column_name} = uuid".format(
+            table_name=table_name,
+            column_name=column_name,
+        )
+        return sql
+
+
+MyReplacer().execute(
+    params={
+        'host': 'localhost',
+        'user': 'postgres',
+        'password': 'postgres',
+        'schema': 'public',
+        'db_name': 'clayton',
+        'serial_name': 'serial_id',
+    }
+)
+print("FIM")
