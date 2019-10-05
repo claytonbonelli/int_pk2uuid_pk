@@ -66,7 +66,6 @@ class IdReplacer:
         utils = DatabaseUtils()
         conn = utils.get_connection(params)
         try:
-            # TODO como excluir a view
             with conn:
                 # Primary Key
                 primairy_keys = self._get_primairy_keys(conn)
