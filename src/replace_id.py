@@ -1,5 +1,5 @@
 import psycopg2
-from psycopg2.extras import DictCursor, RealDictCursor
+from psycopg2.extras import RealDictCursor
 
 
 class DatabaseUtils:
@@ -292,46 +292,3 @@ class IdReplacer:
             sql = self._build_sql_to_add_column(table_name, column_name, 'UUID')
             if sql is not None:
                 utils.execute(connection, sql)
-
-
-class MyReplacer(IdReplacer):
-    def _set_up(self, connection, *args, **kwargs):
-        super()._set_up(connection, *args, **kwargs)
-        utils = kwargs['utils']
-        rows = kwargs['rows']
-        schemas = set([row['table_schema'] for row in rows])
-        for schema in schemas:
-            sql = """
-            drop index if exists {schema}.idx_unique_primary_id_per_gender;
-            drop trigger if exists trigger_animal_detail on {schema}.animaldetail;
-            drop view if exists {schema}.animalgroupeventsummary cascade;
-            alter table if exists {schema}.healthtask drop constraint if exists healthtask_general_group_type_id_check;
-            """.format(schema=schema)
-            utils.execute(connection, sql)
-
-    def _tear_down(self, connection, *args, **kwargs):
-        pass
-
-    def _build_primary_key_update_command(self, *args, **kwargs):
-        table_name = kwargs['table_name']
-        if table_name != 'public.stage':
-            return None
-        column_name = kwargs['column_name']
-        sql = "update {table_name} set {column_name} = uuid".format(
-            table_name=table_name,
-            column_name=column_name,
-        )
-        return sql
-
-
-MyReplacer().execute(
-    params={
-        'host': 'localhost',
-        'user': 'postgres',
-        'password': 'postgres',
-        'schema': 'public',
-        'db_name': 'clayton',
-        'serial_name': 'serial_id',
-    }
-)
-print("FIM")
