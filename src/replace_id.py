@@ -23,7 +23,7 @@ class DatabaseUtils:
             db_name=params["db_name"],
         )
         connection = psycopg2.connect(conn_string)
-        connection.autocommit = params['autocommit ']
+        connection.autocommit = params['autocommit']
         return connection
 
     def select(self, connection, select_command):
@@ -91,7 +91,7 @@ class IdReplacer:
                     self._change_fk_column_to_datatype(conn, *args, **kwargs, data_type='varchar')
                     print("Copying fk values")
                     self._copy_pk_values_to_fk_columns(conn, *args, **kwargs)
-                    print("_add_temporary_columnChanging fk to uuid")
+                    print("Changing fk to uuid")
                     self._change_fk_column_to_datatype(conn, *args, **kwargs, data_type='uuid')
                 finally:
                     kwargs['rows'] = primairy_keys
@@ -104,6 +104,22 @@ class IdReplacer:
 
     def _tear_down(self, connection, *args, **kwargs):
         pass
+
+    def _build_sql_to_drop_default_value(self, table_name, column_name):
+        sql = "alter table if exists {table_name} alter column {column_name} drop default".format(
+            table_name=table_name,
+            column_name=column_name,
+        )
+        return sql
+
+    def _drop_column_default_value(self, connection, *args, **kwargs):
+        rows = kwargs['rows']
+        utils = DatabaseUtils()
+        for row in rows:
+            table_name = self._build_table_name(row['table_schema'], row['table_name'])
+            column_name = row['column_name']
+            sql = self._build_sql_to_drop_default_value(table_name, column_name)
+            utils.execute(connection, sql)
 
     def _copy_pk_values_to_fk_columns(self, connection, *args, **kwargs):
         rows = kwargs['rows']
