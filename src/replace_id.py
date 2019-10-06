@@ -80,7 +80,7 @@ class IdReplacer:
                     self._assign_value_to_temporary_pk_column(conn, *args, **kwargs)
                     print("Adding serial column")
                     self._add_serial_column(conn, *args, **kwargs)
-                    print("Copying ok to serial column")
+                    print("Copying pk to serial column")
                     self._copy_pk_column_to_serial_column(conn, *args, **kwargs)
                     # Foreign Key
                     print("Getting foreign keys")
@@ -89,6 +89,8 @@ class IdReplacer:
                     self._drop_fk_constraint(conn, *args, **kwargs)
                     print("Changing FKs to varchar")
                     self._change_fk_column_to_varchar(conn, *args, **kwargs)
+                    print("Copying fk values")
+                    self._copy_pk_values_to_fk_columns(conn, *args, **kwargs)
                     # self._add_temporary_column(conn, *args, **kwargs)
                     # self._copy_fk_column_to_temporary_fk_column(conn, *args, **kwargs)
                 finally:
@@ -102,6 +104,38 @@ class IdReplacer:
 
     def _tear_down(self, connection, *args, **kwargs):
         pass
+
+    def _copy_pk_values_to_fk_columns(self, connection, *args, **kwargs):
+        rows = kwargs['rows']
+        utils = DatabaseUtils()
+
+        for row in rows:
+            table_schema = row['table_schema']
+            table_name = row['table_name']
+            table_name = self._build_table_name(table_schema, table_name)
+
+            column_name = row['column_name']
+            foreign_table_name = self._build_table_name(row['foreign_table_schema'], row['foreign_table_name'])
+            foreign_column_name = row['foreign_column_name']
+            temp_name = self._build_temp_column_name(foreign_column_name)
+
+            sql = """
+            update {table_name} a 
+            set {column_name} = x.{temp_name}::varchar
+            from {foreign_table_name} x
+            where a.{column_name}::varchar = x.{foreign_column_name}::varchar
+            """.format(
+                table_name=table_name,
+                temp_name=temp_name,
+                foreign_table_name=foreign_table_name,
+                column_name=column_name,
+                foreign_column_name=foreign_column_name,
+            )
+            try:
+                utils.execute(connection, sql)
+            except Exception as e:
+                print(sql)
+                raise e
 
     def _build_sql_to_alter_column_datatype(self, table_name, column_name, data_type):
         sql = "alter table {table_name} alter column {column_name} type {data_type}".format(
@@ -194,7 +228,7 @@ class IdReplacer:
                 utils.execute(connection, sql)
 
     def _build_primary_key_update_command(self, *args, **kwargs):
-        return kwargs['sql'].format(value='gen_random_uuid()')
+        return kwargs['update_command'].format(value='gen_random_uuid()')
 
     def _assign_value_to_temporary_pk_column(self, connection, *args, **kwargs):
         rows = kwargs['rows']
