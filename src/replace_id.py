@@ -198,7 +198,7 @@ class IdReplacer:
                 utils.execute(connection, sql)
 
     def _change_pk_column_to_uuid(self, connection, *args, **kwargs):
-        rows = kwargs['rows']
+        rows = self._get_primary_keys(connection)
         utils = kwargs['utils']
         for row in rows:
             data_type = row['data_type']
@@ -212,14 +212,7 @@ class IdReplacer:
 
             sql = self._build_sql_to_alter_pk_column_to_uuid(table_name, column_name)
             if sql is not None:
-                try:
-                    utils.execute(connection, sql)
-                except Exception as e:
-                    if 'function to_hex(uuid)' in str(e):
-                        continue
-                    print(sql)
-                    print(row)
-                    raise e
+                utils.execute(connection, sql)
 
     def _build_sql_to_drop_constraint(self, table_name, constraint_name):
         sql = "alter table {table_name} drop constraint if exists {constraint_name}".format(
@@ -277,7 +270,7 @@ class IdReplacer:
 
             sql = self._build_sql_to_update_column(table_name, column_name, temp_column)
             if sql is not None:
-                utils.execute(connection, update_command)
+                utils.execute(connection, sql)
 
     def _assign_value_to_temporary_pk_column(self, connection, *args, **kwargs):
         rows = kwargs['rows']
