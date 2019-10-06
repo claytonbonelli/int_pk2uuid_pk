@@ -23,3 +23,32 @@ Some database the primary keys and related foreign keys are defined as numeric s
     
 * Use the tear_down method to restore any changes made during the set_up method 
 
+```python
+from replace_id import IdReplacer
+
+
+class MyReplacer(IdReplacer):
+    def _set_up(self, connection, *args, **kwargs):
+        utils = kwargs['utils']
+        rows = kwargs['rows']
+        schemas = set([row['table_schema'] for row in rows])
+        for schema in schemas:
+            sql = """
+            alter table if exists {schema}.MyTable alter column my_column drop default;
+            drop trigger if exists my_trigger on {schema}.MyTable;
+            """.format(schema=schema)
+            utils.execute(connection, sql)
+
+
+MyReplacer().execute(
+    params={
+        'host': 'localhost',
+        'user': 'postgres',
+        'password': 'postgres',
+        'schema': 'public',
+        'db_name': 'clayton',
+        'serial_name': 'serial_id',
+        'autocommit': True,
+    }
+)
+```
