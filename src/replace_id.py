@@ -5,6 +5,8 @@ from psycopg2.extras import RealDictCursor
 class DatabaseUtils:
     """
     Some utils to manage database conections, selects, etc.
+
+    Author: Clayton Bonelli
     """
 
     def get_connection(self, params):
