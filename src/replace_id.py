@@ -5,8 +5,6 @@ from psycopg2.extras import RealDictCursor
 class DatabaseUtils:
     """
     Some utils to manage database conections, selects, etc.
-
-    Author: Clayton Bonelli
     """
 
     def get_connection(self, params):
@@ -53,8 +51,6 @@ class DatabaseUtils:
 class IdReplacer:
     """
     Perform the ID replace.
-
-    Author: Clayton Bonelli
     """
 
     def execute(self, *args, **kwargs):
