@@ -91,10 +91,8 @@ class IdReplacer:
                     self._change_fk_column_to_datatype(conn, *args, **kwargs, data_type='varchar')
                     print("Copying fk values")
                     self._copy_pk_values_to_fk_columns(conn, *args, **kwargs)
-                    print("Changing fk to uuid")
+                    print("_add_temporary_columnChanging fk to uuid")
                     self._change_fk_column_to_datatype(conn, *args, **kwargs, data_type='uuid')
-                    # self._add_temporary_column(conn, *args, **kwargs)
-                    # self._copy_fk_column_to_temporary_fk_column(conn, *args, **kwargs)
                 finally:
                     kwargs['rows'] = primairy_keys
                     self._tear_down(conn, *args, **kwargs)
@@ -182,33 +180,6 @@ class IdReplacer:
             sql = self._build_sql_to_drop_constraint(table_name, constraint_name)
             if sql is not None:
                 utils.execute(connection, sql)
-
-    def _copy_fk_column_to_temporary_fk_column(self, connection, *args, **kwargs):
-        rows = kwargs['rows']
-        utils = DatabaseUtils()
-
-        for row in rows:
-            table_name = self._build_table_name(row['table_schema'], row['table_name'])
-            column_name = row['column_name']
-            temp_name = self._build_temp_column_name(column_name)
-            foreign_table_name = self._build_table_name(row['foreign_table_schema'], row['foreign_table_name'])
-            pk = row['foreign_column_name']
-            foreign_column_name = self._build_temp_column_name(pk)
-
-            sql = """
-            update {table_name} a 
-            set {temp_column} = x.{foreign_column_name}
-            from {foreign_table_name} x
-            where a.{column_name} = x.{pk}
-            """.format(
-                table_name=table_name,
-                temp_column=temp_name,
-                column_name=column_name,
-                foreign_table_name=foreign_table_name,
-                foreign_column_name=foreign_column_name,
-                pk=pk,
-            )
-            utils.execute(connection, sql)
 
     def _build_sql_to_update_column(self, table_name, column_name, value):
         sql = "update {table_name} set {column_name} = {value}".format(
