@@ -17,8 +17,9 @@ Some database the primary keys and related foreign keys are defined as numeric s
 * Backup your data
 * Use inheritance to add any specific behavior
 * Use the set_up method:
-    ** to delete the default values for any column that will be cast to uuid
-    ** to delete trigers, views and other objects that depend of the columns to be cast 
-    ** to delete any check constraints for all columns that will be cast
+    * to delete the default values for any column that will be cast to uuid
+    * to delete trigers, views and other objects that depend of the columns to be cast 
+    * to delete any check constraints for all columns that will be cast
+    
 * Use the tear_down method to restore any changes made during the set_up method 
 
