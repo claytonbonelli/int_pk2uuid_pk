@@ -23,7 +23,7 @@ class DatabaseUtils:
             db_name=params["db_name"],
         )
         connection = psycopg2.connect(conn_string)
-        connection.autocommit = False
+        connection.autocommit = params['autocommit ']
         return connection
 
     def select(self, connection, select_command):
@@ -76,7 +76,7 @@ class IdReplacer:
                     kwargs['rows'] = primairy_keys
                     print("Adding temporary column")
                     self._add_temporary_column(conn, *args, **kwargs)
-                    print("Assign temporary column")
+                    print("Assign values to temporary column")
                     self._assign_value_to_temporary_pk_column(conn, *args, **kwargs)
                     print("Adding serial column")
                     self._add_serial_column(conn, *args, **kwargs)
@@ -85,12 +85,14 @@ class IdReplacer:
                     # Foreign Key
                     print("Getting foreign keys")
                     kwargs['rows'] = foreign_keys
-                    print("Dropping FK constraints")
+                    print("Dropping fk constraints")
                     self._drop_fk_constraint(conn, *args, **kwargs)
-                    print("Changing FKs to varchar")
-                    self._change_fk_column_to_varchar(conn, *args, **kwargs)
+                    print("Changing fk to varchar")
+                    self._change_fk_column_to_datatype(conn, *args, **kwargs, data_type='varchar')
                     print("Copying fk values")
                     self._copy_pk_values_to_fk_columns(conn, *args, **kwargs)
+                    print("Changing fk to uuid")
+                    self._change_fk_column_to_datatype(conn, *args, **kwargs, data_type='uuid')
                     # self._add_temporary_column(conn, *args, **kwargs)
                     # self._copy_fk_column_to_temporary_fk_column(conn, *args, **kwargs)
                 finally:
@@ -138,15 +140,18 @@ class IdReplacer:
                 raise e
 
     def _build_sql_to_alter_column_datatype(self, table_name, column_name, data_type):
-        sql = "alter table {table_name} alter column {column_name} type {data_type}".format(
+        sql = """
+        alter table {table_name} alter column {column_name} type {data_type} using {column_name}::{data_type}
+        """.format(
             table_name=table_name,
             column_name=column_name,
             data_type=data_type,
         )
         return sql
 
-    def _change_fk_column_to_varchar(self, connection, *args, **kwargs):
+    def _change_fk_column_to_datatype(self, connection, *args, **kwargs):
         rows = kwargs['rows']
+        data_type = kwargs['data_type']
         utils = DatabaseUtils()
         for row in rows:
             schema_name = row['table_schema']
@@ -154,7 +159,7 @@ class IdReplacer:
             table_name = self._build_table_name(schema_name, table_name)
             column_name = row['column_name']
 
-            sql = self._build_sql_to_alter_column_datatype(table_name, column_name, 'varchar')
+            sql = self._build_sql_to_alter_column_datatype(table_name, column_name, data_type)
             if sql is not None:
                 utils.execute(connection, sql)
 
