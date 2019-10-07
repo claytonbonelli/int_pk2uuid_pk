@@ -233,17 +233,22 @@ class IdReplacer:
         return sql
 
     def _build_sql_to_create_constraint(
-            self, table_name, constraint_name, column_name, foreign_table_name, foreign_column_name
+            self, table_name, constraint_name, column_name, foreign_table_name, foreign_column_name,
+            match_option, update_rule, delete_rule
     ):
         sql = """
         alter table {table_name} add constraint {constraint_name} 
-        foreign key ({column_name}) references {foreign_table_name} ({foreign_column_name}); 
+        foreign key ({column_name}) references {foreign_table_name} ({foreign_column_name})
+        match {match_option} on delete {delete_rule} on update {update_rule}; 
         """.format(
             table_name=table_name,
             constraint_name=constraint_name,
             column_name=column_name,
             foreign_table_name=foreign_table_name,
             foreign_column_name=foreign_column_name,
+            match_option=match_option if match_option != 'NONE' else 'SIMPLE',
+            delete_rule=delete_rule,
+            update_rule=update_rule,
         )
         return sql
 
@@ -269,9 +274,13 @@ class IdReplacer:
             column_name = row['column_name']
             foreign_table_name = self._build_table_name(row['foreign_table_schema'], row['foreign_table_name'])
             foreign_column_name = row['foreign_column_name']
+            match_option = row['match_option']
+            update_rule = row['update_rule']
+            delete_rule = row['delete_rule']
 
             sql = self._build_sql_to_create_constraint(
-                table_name, constraint_name, column_name, foreign_table_name, foreign_column_name
+                table_name, constraint_name, column_name, foreign_table_name, foreign_column_name,
+                match_option, update_rule, delete_rule
             )
             if sql is not None:
                 utils.execute(connection, sql)
@@ -352,12 +361,20 @@ class IdReplacer:
 
     def _get_foreign_keys(self, connection):
         sql = """
-        select distinct tc.table_schema, tc.table_name, kcu.column_name, c.data_type, ccu.table_schema as foreign_table_schema, 
-          ccu.table_name as foreign_table_name, ccu.column_name as foreign_column_name, tc.constraint_name
+        select distinct 
+          tc.table_schema, tc.table_name, kcu.column_name, c.data_type, 
+          ccu.table_schema as foreign_table_schema, 
+          ccu.table_name as foreign_table_name, ccu.column_name as foreign_column_name, tc.constraint_name,
+          rco.match_option, rco.update_rule, rco.delete_rule
         from information_schema.table_constraints as tc
-        inner join information_schema.key_column_usage kcu on tc.constraint_name = kcu.constraint_name
-        inner join information_schema.constraint_column_usage ccu on ccu.constraint_name = tc.constraint_name
-        inner join information_schema.columns c on tc.table_schema = c.table_schema and tc.table_name = c.table_name and kcu.column_name = c.column_name
+        inner join information_schema.key_column_usage kcu 
+        on tc.constraint_schema = kcu.constraint_schema and tc.constraint_name = kcu.constraint_name
+        inner join information_schema.constraint_column_usage ccu 
+        on tc.constraint_schema = ccu.constraint_schema and tc.constraint_name = ccu.constraint_name
+        inner join information_schema.columns c 
+        on tc.table_schema = c.table_schema and tc.table_name = c.table_name and kcu.column_name = c.column_name
+        inner join information_schema.referential_constraints rco 
+        on tc.constraint_schema = rco.constraint_schema and tc.constraint_name = rco.constraint_name
         where constraint_type = 'FOREIGN KEY'
         and data_type in ('integer', 'bigint')
         """
