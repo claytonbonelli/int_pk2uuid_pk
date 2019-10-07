@@ -53,4 +53,18 @@ MyReplacer().execute(
 )
 ```
 
+# Actions in the database
+
+The following actions are performed on each of the tables that will have their PK / FK columns changed from integer / bigint to UUID:
+* Creation of a temporary column to store the new UUID value to be associated with the PK
+* Creation of a column (serial_id) that will receive a copy of the current PK value. This column will be kept in the table if references to the old PK value are required.
+* Exclusion of all constraints FKs
+* All FK columns will be changed from int / bigint to varchar
+* Copy UUID values ​​from related tables to FK columns
+* Change FK columns from varchar to UUID
+* Change PK types to UUID
+* Copy UUID values ​​from temporary columns to PK column
+* Creation of FK constraints
+
+
 ## TODO: assign default value for all PK columns
