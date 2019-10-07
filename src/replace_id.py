@@ -102,8 +102,11 @@ class IdReplacer:
                     print("Changing pk to uuid")
                     kwargs['rows'] = self.primary_keys
                     self._change_pk_column_to_uuid(conn, *args, **kwargs)
-                    print("Setting the uuid value to primary key")
+                    print("Setting the uuid primary key value")
                     self._copy_temporary_column_to_pk(conn, *args, **kwargs)
+                    print("Recreating fk constraints")
+                    kwargs['rows'] = self.foreign_keys
+                    self._create_fk_constraint(conn, *args, **kwargs)
                 finally:
                     self._tear_down(conn, *args, **kwargs)
         finally:
@@ -131,6 +134,23 @@ class IdReplacer:
             sql = self._build_sql_to_drop_default_value(table_name, column_name)
             utils.execute(connection, sql)
 
+    def _build_sql_to_copy_pk_values_to_fk_columns(
+            self, table_name, column_name, temp_name, foreign_table_name, foreign_column_name
+    ):
+        sql = """
+        update {table_name} a 
+        set {column_name} = x.{temp_name}::varchar
+        from {foreign_table_name} x
+        where a.{column_name}::varchar = x.{foreign_column_name}::varchar;
+        """.format(
+            table_name=table_name,
+            temp_name=temp_name,
+            foreign_table_name=foreign_table_name,
+            column_name=column_name,
+            foreign_column_name=foreign_column_name,
+        )
+        return sql
+
     def _copy_pk_values_to_fk_columns(self, connection, *args, **kwargs):
         rows = kwargs['rows']
         utils = kwargs['utils']
@@ -145,23 +165,15 @@ class IdReplacer:
             foreign_column_name = row['foreign_column_name']
             temp_name = self._build_temp_column_name(foreign_column_name)
 
-            sql = """
-            update {table_name} a 
-            set {column_name} = x.{temp_name}::varchar
-            from {foreign_table_name} x
-            where a.{column_name}::varchar = x.{foreign_column_name}::varchar
-            """.format(
-                table_name=table_name,
-                temp_name=temp_name,
-                foreign_table_name=foreign_table_name,
-                column_name=column_name,
-                foreign_column_name=foreign_column_name,
+            sql = self._build_sql_to_copy_pk_values_to_fk_columns(
+                table_name, column_name, temp_name, foreign_table_name, foreign_column_name
             )
-            utils.execute(connection, sql)
+            if sql is not None:
+                utils.execute(connection, sql)
 
     def _build_sql_to_alter_column_datatype(self, table_name, column_name, data_type):
         sql = """
-        alter table {table_name} alter column {column_name} type {data_type} using {column_name}::{data_type}
+        alter table {table_name} alter column {column_name} type {data_type} using {column_name}::{data_type};
         """.format(
             table_name=table_name,
             column_name=column_name,
@@ -215,9 +227,24 @@ class IdReplacer:
                 utils.execute(connection, sql)
 
     def _build_sql_to_drop_constraint(self, table_name, constraint_name):
-        sql = "alter table {table_name} drop constraint if exists {constraint_name}".format(
+        sql = "alter table {table_name} drop constraint if exists {constraint_name};".format(
             table_name=table_name,
             constraint_name=constraint_name,
+        )
+        return sql
+
+    def _build_sql_to_create_constraint(
+            self, table_name, constraint_name, column_name, foreign_table_name, foreign_column_name
+    ):
+        sql = """
+        alter table {table_name} add constraint {constraint_name} 
+        foreign key ({column_name}) references {foreign_table_name} ({foreign_column_name}); 
+        """.format(
+            table_name=table_name,
+            constraint_name=constraint_name,
+            column_name=column_name,
+            foreign_table_name=foreign_table_name,
+            foreign_column_name=foreign_column_name,
         )
         return sql
 
@@ -234,8 +261,24 @@ class IdReplacer:
             if sql is not None:
                 utils.execute(connection, sql)
 
+    def _create_fk_constraint(self, connection, *args, **kwargs):
+        rows = kwargs['rows']
+        utils = kwargs['utils']
+        for row in rows:
+            table_name = self._build_table_name(row['table_schema'], row['table_name'])
+            constraint_name = row['constraint_name']
+            column_name = row['column_name']
+            foreign_table_name = self._build_table_name(row['foreign_table_schema'], row['foreign_table_name'])
+            foreign_column_name = row['foreign_column_name']
+
+            sql = self._build_sql_to_create_constraint(
+                table_name, constraint_name, column_name, foreign_table_name, foreign_column_name
+            )
+            if sql is not None:
+                utils.execute(connection, sql)
+
     def _build_sql_to_update_column(self, table_name, column_name, value):
-        sql = "update {table_name} set {column_name} = {value}".format(
+        sql = "update {table_name} set {column_name} = {value};".format(
             table_name=table_name,
             column_name=column_name,
             value=value,
@@ -329,7 +372,7 @@ class IdReplacer:
         return '%s.%s' % (schema_name, table_name)
 
     def _build_sql_to_add_column(self, table_name, column_name, data_type):
-        sql = "alter table {table_name} add column if not exists {column_name} {data_type}".format(
+        sql = "alter table {table_name} add column if not exists {column_name} {data_type};".format(
             table_name=table_name,
             column_name=column_name,
             data_type=data_type,
