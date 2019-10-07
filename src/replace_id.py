@@ -103,6 +103,8 @@ class IdReplacer:
                     self._change_pk_column_to_uuid(conn, *args, **kwargs)
                     print("Setting the uuid primary key value")
                     self._copy_temporary_column_to_pk(conn, *args, **kwargs)
+                    print("Defining a default value to pk")
+                    self._add_default_value_to_pk(conn, *args, **kwargs)
                     print("Recreating fk constraints")
                     kwargs['rows'] = self.foreign_keys
                     self._create_fk_constraint(conn, *args, **kwargs)
@@ -117,8 +119,29 @@ class IdReplacer:
     def _tear_down(self, connection, *args, **kwargs):
         pass
 
+    def _build_sql_to_add_default_value(self, table_name, column_name):
+        sql = "alter table if exists {table_name} alter column {column_name} set default gen_random_uuid();".format(
+            table_name=table_name,
+            column_name=column_name,
+        )
+        return sql
+
+    def _add_default_value_to_pk(self, connection, *args, **kwargs):
+        rows = kwargs['rows']
+        utils = kwargs['utils']
+
+        for row in rows:
+            table_schema = row['table_schema']
+            table_name = row['table_name']
+            table_name = self._build_table_name(table_schema, table_name)
+            column_name = row['column_name']
+
+            sql = self._build_sql_to_add_default_value(table_name, column_name)
+            if sql is not None:
+                utils.execute(connection, sql)
+
     def _build_sql_to_drop_default_value(self, table_name, column_name):
-        sql = "alter table if exists {table_name} alter column {column_name} drop default".format(
+        sql = "alter table if exists {table_name} alter column {column_name} drop default;".format(
             table_name=table_name,
             column_name=column_name,
         )
@@ -354,7 +377,7 @@ class IdReplacer:
         inner join information_schema.key_column_usage kcu on tc.constraint_name = kcu.constraint_name
         inner join information_schema.columns c on tc.table_schema = c.table_schema and tc.table_name = c.table_name and kcu.column_name = c.column_name
         where constraint_type = 'PRIMARY KEY'
-        and data_type in ('integer', 'bigint')
+        and data_type in ('integer', 'bigint');
         """
         rows = DatabaseUtils().select(connection, sql)
         return rows
@@ -376,7 +399,7 @@ class IdReplacer:
         inner join information_schema.referential_constraints rco 
         on tc.constraint_schema = rco.constraint_schema and tc.constraint_name = rco.constraint_name
         where constraint_type = 'FOREIGN KEY'
-        and data_type in ('integer', 'bigint')
+        and data_type in ('integer', 'bigint');
         """
         rows = DatabaseUtils().select(connection, sql)
         return rows
