@@ -67,4 +67,4 @@ The following actions are performed on each of the tables that will have their P
 * Creation of FK constraints
 
 
-## TODO: assign default value for all PK columns
+## TODO: assign default value (gen_random_uuid()) for all PK columns
