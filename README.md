@@ -53,4 +53,4 @@ MyReplacer().execute(
 )
 ```
 
-## TODO: recreate the foreign key constraints
+## TODO: assign default value for all PK columns
