@@ -66,3 +66,5 @@ The following actions are performed on each of the tables that will have their P
 * Copy UUID values from temporary columns to PK column
 * Creation of FK constraints
 
+### TODO remove the temporary column at the end
+
