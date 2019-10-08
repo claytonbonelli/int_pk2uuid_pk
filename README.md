@@ -1,5 +1,5 @@
 # int_pk2uuid_pk
-Change primary keys integer/bigint to UUID
+Convert primary keys integer/bigint to UUID
 
 ###### By Clayton Boneli
 
