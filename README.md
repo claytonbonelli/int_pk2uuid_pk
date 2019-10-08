@@ -11,7 +11,6 @@ Some database the primary keys and related foreign keys are defined as numeric s
 * Postgres database
 * Only integer / bigint keys
 * compound keys are not accepted
-* Under constrution
 
 # How to use:
 * Backup your data
