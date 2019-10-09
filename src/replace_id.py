@@ -107,7 +107,9 @@ class IdReplacer:
                     self._add_default_value_to_pk(conn, *args, **kwargs)
                     print("Recreating fk constraints")
                     kwargs['rows'] = self.foreign_keys
-                    self._create_fk_constraint(conn, *args, **kwargs)
+                    print("Drop temporary column")
+                    kwargs['rows'] = self.primary_keys
+                    self._drop_temporary_column(conn, *args, **kwargs)
                 finally:
                     self._tear_down(conn, *args, **kwargs)
         finally:
@@ -418,6 +420,13 @@ class IdReplacer:
         )
         return sql
 
+    def _build_sql_to_drop_column(self, table_name, column_name):
+        sql = "alter table {table_name} drop column if exists {column_name};".format(
+            table_name=table_name,
+            column_name=column_name,
+        )
+        return sql
+
     def _add_serial_column(self, connection, *args, **kwargs):
         column_name = kwargs['params']['serial_name']
         rows = kwargs['rows']
@@ -446,5 +455,20 @@ class IdReplacer:
             column_name = self._build_temp_column_name(column_name)
 
             sql = self._build_sql_to_add_column(table_name, column_name, 'UUID')
+            if sql is not None:
+                utils.execute(connection, sql)
+
+    def _drop_temporary_column(self, connection, *args, **kwargs):
+        rows = kwargs['rows']
+        utils = kwargs['utils']
+        for row in rows:
+            schema_name = row['table_schema']
+            table_name = row['table_name']
+            column_name = row['column_name']
+
+            table_name = self._build_table_name(schema_name, table_name)
+            column_name = self._build_temp_column_name(column_name)
+
+            sql = self._build_sql_to_drop_column(table_name, column_name)
             if sql is not None:
                 utils.execute(connection, sql)
