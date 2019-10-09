@@ -30,13 +30,11 @@ class MyReplacer(IdReplacer):
     def _set_up(self, connection, *args, **kwargs):
         utils = kwargs['utils']
         rows = kwargs['rows']
-        schemas = set([row['table_schema'] for row in rows])
-        for schema in schemas:
-            sql = """
-            alter table if exists {schema}.MyTable alter column my_column drop default;
-            drop trigger if exists my_trigger on {schema}.MyTable;
-            """.format(schema=schema)
-            utils.execute(connection, sql)
+        sql = """
+        alter table if exists MyTable alter column my_column drop default;
+        drop trigger if exists my_trigger on MyTable;
+        """
+        utils.execute(connection, sql)
 
 
 MyReplacer().execute(
