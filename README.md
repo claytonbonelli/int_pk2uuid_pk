@@ -62,6 +62,7 @@ The following actions are performed on each of the tables that will have their P
 * Copy UUID values from related tables to the FK columns
 * Change FK columns  from varchar to UUID datatype
 * Change PK datatype to UUID
-* Add a default value to pk
+* Add a default value to pk (to generate, automatically, the uuid)
 * Copy UUID values from temporary columns to PK column
 * Creation of FK constraints
+* Drop of the temporary column
