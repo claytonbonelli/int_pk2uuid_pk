@@ -75,10 +75,9 @@ class IdReplacer:
                 # Primary Key
                 self.primary_keys = self._get_primary_keys(conn)
                 self.foreign_keys = self._get_foreign_keys(conn)
-                self._set_up(conn, *args, **kwargs, rows=self.primary_keys)
+                kwargs['rows'] = self.primary_keys
+                self._set_up(conn, *args, **kwargs)
                 try:
-                    print("Getting primary keys")
-                    kwargs['rows'] = self.primary_keys
                     print("Adding temporary column")
                     self._add_temporary_column(conn, *args, **kwargs)
                     print("Assign values to temporary column")
@@ -111,15 +110,46 @@ class IdReplacer:
                     kwargs['rows'] = self.primary_keys
                     self._drop_temporary_column(conn, *args, **kwargs)
                 finally:
+                    kwargs['rows'] = self.primary_keys
                     self._tear_down(conn, *args, **kwargs)
         finally:
             conn.close()
 
+    def _build_sql_to_enable_trigger(self, table_name, action, restrict):
+        sql = "alter table if exists {table_name} {action} trigger {restrict};".format(
+            table_name=table_name,
+            action=action,
+            restrict=restrict,
+        )
+        return sql
+
+    def _enable_trigger(self, connection, *args, **kwargs):
+        rows = kwargs['rows']
+        utils = kwargs['utils']
+        action = kwargs['action']
+        for row in rows:
+            table_schema = row['table_schema']
+            table_name = row['table_name']
+            table_name = self._build_table_name(table_schema, table_name)
+            sql = self._build_sql_to_enable_trigger(table_name, action, restrict='all')
+            if sql is None:
+                return
+            try:
+                utils.execute(connection, sql)
+                return
+            except:
+                pass
+            sql = self._build_sql_to_enable_trigger(table_name, action, restrict='user')
+            if sql is not None:
+                utils.execute(connection, sql)
+
     def _set_up(self, connection, *args, **kwargs):
-        pass
+        kwargs['action'] = 'disable'
+        self._enable_trigger(connection, *args, **kwargs)
 
     def _tear_down(self, connection, *args, **kwargs):
-        pass
+        kwargs['action'] = 'enable'
+        self._enable_trigger(connection, *args, **kwargs)
 
     def _build_sql_to_add_default_value(self, table_name, column_name):
         sql = "alter table if exists {table_name} alter column {column_name} set default gen_random_uuid();".format(
