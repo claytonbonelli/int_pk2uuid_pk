@@ -1,5 +1,25 @@
 import psycopg2
 from psycopg2.extras import RealDictCursor
+from datetime import datetime
+import time
+
+
+class Utils:
+    @classmethod
+    def print_message(cls, message):
+        print("[", datetime.now().strftime("%H:%M:%S.%f"), "]", message)
+
+    @classmethod
+    def to_hour_minute_second(cls, seconds):
+        """
+        from https://www.geeksforgeeks.org/python-program-to-convert-seconds-into-hours-minutes-and-seconds/
+        """
+        seconds = seconds % (24 * 3600)
+        hour = seconds // 3600
+        seconds %= 3600
+        minutes = seconds // 60
+        seconds %= 60
+        return "%d:%02d:%02d" % (hour, minutes, seconds)
 
 
 class DatabaseUtils:
@@ -13,7 +33,9 @@ class DatabaseUtils:
         :param params: a dict with connection parameters: host, user, password, schema and database
         :return: the opened connection
         """
-        conn_string = "host='{host}' dbname='{db_name}' user='{user}' password='{password}' options='-c search_path={schema},public'"
+        conn_string = """
+        host='{host}' dbname='{db_name}' user='{user}' password='{password}' options='-c search_path={schema},public'
+        """
 
         conn_string = conn_string.format(
             host=params["host"],
@@ -64,6 +86,7 @@ class IdReplacer:
         :param kwargs: some key-arguments.
 
         """
+        start_time = time.time()
         params = kwargs.get('params')
         if params is None:
             raise Exception('Params not defined')
@@ -78,35 +101,47 @@ class IdReplacer:
                 kwargs['rows'] = self.primary_keys
                 self._set_up(conn, *args, **kwargs)
                 try:
-                    print("Adding temporary column")
-                    self._add_temporary_column(conn, *args, **kwargs)
-                    print("Assign values to temporary column")
+                    Utils.print_message("Creating temporary pk column")
+                    self._create_temporary_column(conn, *args, **kwargs)
+
+                    Utils.print_message("Assign values to temporary pk column")
                     self._assign_value_to_temporary_pk_column(conn, *args, **kwargs)
-                    print("Adding serial column")
-                    self._add_serial_column(conn, *args, **kwargs)
-                    print("Copying pk to serial column")
+
+                    Utils.print_message("Creating serial column")
+                    self._create_serial_column(conn, *args, **kwargs)
+
+                    Utils.print_message("Copying pk to serial column")
                     self._copy_pk_column_to_serial_column(conn, *args, **kwargs)
+
                     # Foreign Key
-                    print("Getting foreign keys")
                     kwargs['rows'] = self.foreign_keys
-                    print("Dropping fk constraints")
+                    Utils.print_message("Dropping fk constraints")
                     self._drop_fk_constraint(conn, *args, **kwargs)
-                    print("Changing fk to varchar")
+
+                    Utils.print_message("Changing fk to varchar")
                     self._change_fk_column_to_datatype(conn, *args, **kwargs, data_type='varchar')
-                    print("Copying fk values")
+
+                    Utils.print_message("Copying pk values to fk column")
                     self._copy_pk_values_to_fk_columns(conn, *args, **kwargs)
-                    print("Changing fk to uuid")
+
+                    Utils.print_message("Changing fk to uuid")
                     self._change_fk_column_to_datatype(conn, *args, **kwargs, data_type='uuid')
-                    print("Changing pk to uuid")
+
+                    Utils.print_message("Changing pk to uuid")
                     kwargs['rows'] = self.primary_keys
                     self._change_pk_column_to_uuid(conn, *args, **kwargs)
-                    print("Setting the uuid primary key value")
+
+                    Utils.print_message("Setting the uuid primary key value")
                     self._copy_temporary_column_to_pk(conn, *args, **kwargs)
-                    print("Defining a default value to pk")
+
+                    Utils.print_message("Defining a default value to pk")
                     self._add_default_value_to_pk(conn, *args, **kwargs)
-                    print("Recreating fk constraints")
+
+                    Utils.print_message("Recreating fk constraints")
                     kwargs['rows'] = self.foreign_keys
-                    print("Drop temporary column")
+                    self._create_fk_constraint(conn, *args, **kwargs)
+
+                    Utils.print_message("Drop temporary column")
                     kwargs['rows'] = self.primary_keys
                     self._drop_temporary_column(conn, *args, **kwargs)
                 finally:
@@ -114,6 +149,14 @@ class IdReplacer:
                     self._tear_down(conn, *args, **kwargs)
         finally:
             conn.close()
+
+        seconds = round(time.time() - start_time, 2)
+        duration = Utils.to_hour_minute_second(seconds)
+        print("------")
+        print("FINISH")
+        print("------")
+        print("--- %s DURATION ---" % duration)
+        print("------")
 
     def _build_sql_to_enable_trigger(self, table_name, action, restrict):
         sql = "alter table if exists {table_name} {action} trigger {restrict};".format(
@@ -131,12 +174,15 @@ class IdReplacer:
             table_schema = row['table_schema']
             table_name = row['table_name']
             table_name = self._build_table_name(table_schema, table_name)
+
+            Utils.print_message("..." + action + " trigger, if exists, on " + table_name)
+
             sql = self._build_sql_to_enable_trigger(table_name, action, restrict='all')
             if sql is None:
                 return
             try:
                 utils.execute(connection, sql)
-                return
+                continue
             except:
                 pass
             sql = self._build_sql_to_enable_trigger(table_name, action, restrict='user')
@@ -145,10 +191,12 @@ class IdReplacer:
 
     def _set_up(self, connection, *args, **kwargs):
         kwargs['action'] = 'disable'
+        Utils.print_message("Disabling trigger")
         self._enable_trigger(connection, *args, **kwargs)
 
     def _tear_down(self, connection, *args, **kwargs):
         kwargs['action'] = 'enable'
+        Utils.print_message("Enabling trigger")
         self._enable_trigger(connection, *args, **kwargs)
 
     def _build_sql_to_add_default_value(self, table_name, column_name):
@@ -167,6 +215,8 @@ class IdReplacer:
             table_name = row['table_name']
             table_name = self._build_table_name(table_schema, table_name)
             column_name = row['column_name']
+
+            Utils.print_message("...adding default vvalue to PK " + table_name + "." + column_name)
 
             sql = self._build_sql_to_add_default_value(table_name, column_name)
             if sql is not None:
@@ -219,11 +269,17 @@ class IdReplacer:
             foreign_column_name = row['foreign_column_name']
             temp_name = self._build_temp_column_name(foreign_column_name)
 
+            Utils.print_message("...copying pk => fk " + table_name + "." + column_name)
+
             sql = self._build_sql_to_copy_pk_values_to_fk_columns(
                 table_name, column_name, temp_name, foreign_table_name, foreign_column_name
             )
             if sql is not None:
-                utils.execute(connection, sql)
+                try:
+                    utils.execute(connection, sql)
+                except Exception as e:
+                    print(sql)
+                    raise e
 
     def _build_sql_to_alter_column_datatype(self, table_name, column_name, data_type):
         sql = """
@@ -259,6 +315,8 @@ class IdReplacer:
             table_name = self._build_table_name(schema_name, table_name)
             column_name = row['column_name']
 
+            Utils.print_message("...changing FK datatype " + table_name + "." + column_name + " => " + data_type)
+
             sql = self._build_sql_to_alter_column_datatype(table_name, column_name, data_type)
             if sql is not None:
                 utils.execute(connection, sql)
@@ -275,6 +333,8 @@ class IdReplacer:
             table_name = row['table_name']
             table_name = self._build_table_name(schema_name, table_name)
             column_name = row['column_name']
+
+            Utils.print_message("...changing PK to UUID " + table_name + "." + column_name)
 
             sql = self._build_sql_to_alter_pk_column_to_uuid(table_name, column_name)
             if sql is not None:
@@ -316,6 +376,8 @@ class IdReplacer:
             table_name = self._build_table_name(schema_name, table_name)
             constraint_name = row['constraint_name']
 
+            Utils.print_message("...dropping FK constraint " + table_name + " " + constraint_name)
+
             sql = self._build_sql_to_drop_constraint(table_name, constraint_name)
             if sql is not None:
                 utils.execute(connection, sql)
@@ -332,6 +394,8 @@ class IdReplacer:
             match_option = row['match_option']
             update_rule = row['update_rule']
             delete_rule = row['delete_rule']
+
+            Utils.print_message("...creating FK constraints " + table_name + " " + constraint_name)
 
             sql = self._build_sql_to_create_constraint(
                 table_name, constraint_name, column_name, foreign_table_name, foreign_column_name,
@@ -358,6 +422,8 @@ class IdReplacer:
             table_name = self._build_table_name(table_schema, row['table_name'])
             column_name = row['column_name']
 
+            Utils.print_message("...copying pk to serial column " + table_name)
+
             sql = self._build_sql_to_update_column(table_name, serial_name, column_name)
             if sql is not None:
                 utils.execute(connection, sql)
@@ -374,6 +440,8 @@ class IdReplacer:
             column_name = row['column_name']
             temp_column = self._build_temp_column_name(column_name)
 
+            Utils.print_message("...copying temporary column to PK " + table_name + "." + column_name)
+
             sql = self._build_sql_to_update_column(table_name, column_name, temp_column)
             if sql is not None:
                 utils.execute(connection, sql)
@@ -387,6 +455,8 @@ class IdReplacer:
             table_schema = row['table_schema']
             table_name = self._build_table_name(table_schema, row['table_name'])
             column_name = self._build_temp_column_name(row['column_name'])
+
+            Utils.print_message("...assiging " + table_name + "." + column_name)
 
             update_command = self._build_sql_to_update_column(table_name, column_name, '{value}')
             update_command = self._build_primary_key_update_command(
@@ -442,7 +512,7 @@ class IdReplacer:
     def _build_table_name(self, schema_name, table_name):
         return '%s.%s' % (schema_name, table_name)
 
-    def _build_sql_to_add_column(self, table_name, column_name, data_type):
+    def _build_sql_to_create_column(self, table_name, column_name, data_type):
         sql = "alter table {table_name} add column if not exists {column_name} {data_type};".format(
             table_name=table_name,
             column_name=column_name,
@@ -457,7 +527,7 @@ class IdReplacer:
         )
         return sql
 
-    def _add_serial_column(self, connection, *args, **kwargs):
+    def _create_serial_column(self, connection, *args, **kwargs):
         column_name = kwargs['params']['serial_name']
         rows = kwargs['rows']
         utils = kwargs['utils']
@@ -466,25 +536,27 @@ class IdReplacer:
             schema_name = row['table_schema']
             table_name = row['table_name']
             data_type = row['data_type']
-
             table_name = self._build_table_name(schema_name, table_name)
 
-            sql = self._build_sql_to_add_column(table_name, column_name, data_type)
+            Utils.print_message("...adding serial column " + table_name)
+
+            sql = self._build_sql_to_create_column(table_name, column_name, data_type)
             if sql is not None:
                 utils.execute(connection, sql)
 
-    def _add_temporary_column(self, connection, *args, **kwargs):
+    def _create_temporary_column(self, connection, *args, **kwargs):
         rows = kwargs['rows']
         utils = kwargs['utils']
         for row in rows:
             schema_name = row['table_schema']
             table_name = row['table_name']
             column_name = row['column_name']
-
             table_name = self._build_table_name(schema_name, table_name)
             column_name = self._build_temp_column_name(column_name)
 
-            sql = self._build_sql_to_add_column(table_name, column_name, 'UUID')
+            Utils.print_message("...adding " + table_name + "." + column_name)
+
+            sql = self._build_sql_to_create_column(table_name, column_name, 'UUID')
             if sql is not None:
                 utils.execute(connection, sql)
 
@@ -498,6 +570,8 @@ class IdReplacer:
 
             table_name = self._build_table_name(schema_name, table_name)
             column_name = self._build_temp_column_name(column_name)
+
+            Utils.print_message("...dropping temporary column " + table_name + "." + column_name)
 
             sql = self._build_sql_to_drop_column(table_name, column_name)
             if sql is not None:
