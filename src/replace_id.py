@@ -99,7 +99,7 @@ class IdReplacer:
                 self.primary_keys = self._get_primary_keys(conn)
                 self.foreign_keys = self._get_foreign_keys(conn)
                 kwargs['rows'] = self.primary_keys
-                self._set_up(conn, *args, **kwargs)
+                self.set_up(conn, *args, **kwargs)
                 try:
                     Utils.print_message("Creating temporary pk column")
                     self._create_temporary_column(conn, *args, **kwargs)
@@ -146,7 +146,7 @@ class IdReplacer:
                     self._drop_temporary_column(conn, *args, **kwargs)
                 finally:
                     kwargs['rows'] = self.primary_keys
-                    self._tear_down(conn, *args, **kwargs)
+                    self.tear_down(conn, *args, **kwargs)
         finally:
             conn.close()
 
@@ -189,12 +189,12 @@ class IdReplacer:
             if sql is not None:
                 utils.execute(connection, sql)
 
-    def _set_up(self, connection, *args, **kwargs):
+    def set_up(self, connection, *args, **kwargs):
         kwargs['action'] = 'disable'
         Utils.print_message("Disabling trigger")
         self._enable_trigger(connection, *args, **kwargs)
 
-    def _tear_down(self, connection, *args, **kwargs):
+    def tear_down(self, connection, *args, **kwargs):
         kwargs['action'] = 'enable'
         Utils.print_message("Enabling trigger")
         self._enable_trigger(connection, *args, **kwargs)
