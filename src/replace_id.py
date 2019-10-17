@@ -118,18 +118,21 @@ class IdReplacer:
                     Utils.print_message("Dropping fk constraints")
                     self._drop_fk_constraint(conn, *args, **kwargs)
 
-                    Utils.print_message("Changing fk to varchar")
-                    self._change_fk_column_to_datatype(conn, *args, **kwargs, data_type='varchar')
+                    Utils.print_message("Changing fk to uuid")
+                    self._change_column_to_uuid(conn, *args, **kwargs)
 
-                    Utils.print_message("Copying pk values to fk column")
+                    # Utils.print_message("Changing fk to varchar")
+                    # self._change_fk_column_to_datatype(conn, *args, **kwargs, data_type='varchar')
+
+                    Utils.print_message("Copying pk column to fk column (uuid)")
                     self._copy_pk_values_to_fk_columns(conn, *args, **kwargs)
 
-                    Utils.print_message("Changing fk to uuid")
-                    self._change_fk_column_to_datatype(conn, *args, **kwargs, data_type='uuid')
+                    # Utils.print_message("Changing fk to uuid")
+                    # self._change_fk_column_to_datatype(conn, *args, **kwargs, data_type='uuid')
 
                     Utils.print_message("Changing pk to uuid")
                     kwargs['rows'] = self.primary_keys
-                    self._change_pk_column_to_uuid(conn, *args, **kwargs)
+                    self._change_column_to_uuid(conn, *args, **kwargs)
 
                     Utils.print_message("Setting the uuid primary key value")
                     self._copy_temporary_column_to_pk(conn, *args, **kwargs)
@@ -243,9 +246,9 @@ class IdReplacer:
     ):
         sql = """
         update {table_name} a 
-        set {column_name} = x.{temp_name}::varchar
+        set {column_name} = x.{temp_name}::uuid
         from {foreign_table_name} x
-        where a.{column_name}::varchar = x.{foreign_column_name}::varchar;
+        where a.{column_name}::uuid = x.{foreign_column_name}::uuid;
         """.format(
             table_name=table_name,
             temp_name=temp_name,
@@ -291,7 +294,7 @@ class IdReplacer:
         )
         return sql
 
-    def _build_sql_to_alter_pk_column_to_uuid(self, table_name, column_name):
+    def _build_sql_to_alter_column_to_uuid(self, table_name, column_name):
         sql = """
         alter table {table_name} alter column {column_name} type uuid 
         using cast(lpad(to_hex({column_name}), 32, '0') as uuid);
@@ -321,7 +324,7 @@ class IdReplacer:
             if sql is not None:
                 utils.execute(connection, sql)
 
-    def _change_pk_column_to_uuid(self, connection, *args, **kwargs):
+    def _change_column_to_uuid(self, connection, *args, **kwargs):
         rows = self._get_primary_keys(connection)
         utils = kwargs['utils']
         for row in rows:
@@ -334,9 +337,9 @@ class IdReplacer:
             table_name = self._build_table_name(schema_name, table_name)
             column_name = row['column_name']
 
-            Utils.print_message("...changing PK to UUID " + table_name + "." + column_name)
+            Utils.print_message("...changing column to UUID " + table_name + "." + column_name)
 
-            sql = self._build_sql_to_alter_pk_column_to_uuid(table_name, column_name)
+            sql = self._build_sql_to_alter_column_to_uuid(table_name, column_name)
             if sql is not None:
                 utils.execute(connection, sql)
 
