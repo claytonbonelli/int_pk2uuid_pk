@@ -118,17 +118,14 @@ class IdReplacer:
                     Utils.print_message("Dropping fk constraints")
                     self._drop_fk_constraint(conn, *args, **kwargs)
 
-                    Utils.print_message("Changing fk to uuid")
-                    self._change_column_to_uuid(conn, *args, **kwargs)
-
-                    # Utils.print_message("Changing fk to varchar")
-                    # self._change_fk_column_to_datatype(conn, *args, **kwargs, data_type='varchar')
+                    Utils.print_message("Changing fk to varchar")
+                    self._change_fk_column_to_datatype(conn, *args, **kwargs, data_type='varchar')
 
                     Utils.print_message("Copying pk column to fk column (uuid)")
                     self._copy_pk_values_to_fk_columns(conn, *args, **kwargs)
 
-                    # Utils.print_message("Changing fk to uuid")
-                    # self._change_fk_column_to_datatype(conn, *args, **kwargs, data_type='uuid')
+                    Utils.print_message("Changing fk to uuid")
+                    self._change_fk_column_to_datatype(conn, *args, **kwargs, data_type='uuid')
 
                     Utils.print_message("Changing pk to uuid")
                     kwargs['rows'] = self.primary_keys
@@ -246,9 +243,9 @@ class IdReplacer:
     ):
         sql = """
         update {table_name} a 
-        set {column_name} = x.{temp_name}::uuid
+        set {column_name} = x.{temp_name}::varchar
         from {foreign_table_name} x
-        where a.{column_name}::uuid = x.{foreign_column_name}::uuid;
+        where a.{column_name}::varchar = x.{foreign_column_name}::varchar;
         """.format(
             table_name=table_name,
             temp_name=temp_name,
