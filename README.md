@@ -27,7 +27,7 @@ from replace_id import IdReplacer
 
 
 class MyReplacer(IdReplacer):
-    def _set_up(self, connection, *args, **kwargs):
+    def set_up(self, connection, *args, **kwargs):
         utils = kwargs['utils']
         rows = kwargs['rows']
         sql = """
