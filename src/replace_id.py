@@ -34,7 +34,7 @@ class DatabaseUtils:
         :return: the opened connection
         """
         conn_string = """
-        host='{host}' dbname='{db_name}' user='{user}' password='{password}' options='-c search_path={schema},public'
+        host='{host}' dbname='{db_name}' user='{user}' password='{password}' port={port} options='-c search_path={schema},public'
         """
 
         conn_string = conn_string.format(
@@ -43,6 +43,7 @@ class DatabaseUtils:
             password=params["password"],
             schema=params["schema"],
             db_name=params["db_name"],
+            port=params["port"]
         )
         connection = psycopg2.connect(conn_string)
         connection.autocommit = params['autocommit']
@@ -66,8 +67,12 @@ class DatabaseUtils:
         :param connection: a opened connection.
         :param select_command: the select command
         """
-        cursor = connection.cursor()
-        cursor.execute(sql_command)
+        try:
+            cursor = connection.cursor()
+            cursor.execute(sql_command)
+        except:
+            print(sql_command)
+            raise
 
 
 class IdReplacer:
@@ -101,6 +106,9 @@ class IdReplacer:
                 kwargs['rows'] = self.primary_keys
                 self.set_up(conn, *args, **kwargs)
                 try:
+                    Utils.print_message("Droping PK default value")
+                    self._drop_pk_default_value(conn, *args, **kwargs)
+
                     Utils.print_message("Creating temporary pk column")
                     self._create_temporary_column(conn, *args, **kwargs)
 
@@ -341,7 +349,7 @@ class IdReplacer:
                 utils.execute(connection, sql)
 
     def _build_sql_to_drop_constraint(self, table_name, constraint_name):
-        sql = "alter table {table_name} drop constraint if exists {constraint_name};".format(
+        sql = 'alter table {table_name} drop constraint if exists "{constraint_name}";'.format(
             table_name=table_name,
             constraint_name=constraint_name,
         )
@@ -352,7 +360,7 @@ class IdReplacer:
             match_option, update_rule, delete_rule
     ):
         sql = """
-        alter table {table_name} add constraint {constraint_name} 
+        alter table {table_name} add constraint "{constraint_name}" 
         foreign key ({column_name}) references {foreign_table_name} ({foreign_column_name})
         match {match_option} on delete {delete_rule} on update {update_rule}; 
         """.format(
@@ -479,7 +487,8 @@ class IdReplacer:
         inner join information_schema.key_column_usage kcu on tc.constraint_name = kcu.constraint_name
         inner join information_schema.columns c on tc.table_schema = c.table_schema and tc.table_name = c.table_name and kcu.column_name = c.column_name
         where constraint_type = 'PRIMARY KEY'
-        and data_type in ('integer', 'bigint');
+        and data_type in ('integer', 'bigint')
+        and tc.table_schema not in ('pg_catalog');
         """
         rows = DatabaseUtils().select(connection, sql)
         return rows
@@ -501,7 +510,8 @@ class IdReplacer:
         inner join information_schema.referential_constraints rco 
         on tc.constraint_schema = rco.constraint_schema and tc.constraint_name = rco.constraint_name
         where constraint_type = 'FOREIGN KEY'
-        and data_type in ('integer', 'bigint');
+        and data_type in ('integer', 'bigint')
+        and tc.table_schema not in ('pg_catalog');
         """
         rows = DatabaseUtils().select(connection, sql)
         return rows
@@ -543,6 +553,28 @@ class IdReplacer:
             sql = self._build_sql_to_create_column(table_name, column_name, data_type)
             if sql is not None:
                 utils.execute(connection, sql)
+
+    def _drop_pk_default_value(self, connection, *args, **kwargs):
+        rows = kwargs['rows']
+        utils = kwargs['utils']
+        for row in rows:
+            schema_name = row['table_schema']
+            table_name = row['table_name']
+            table_name = self._build_table_name(schema_name, table_name)
+            column_name = row['column_name']
+
+            Utils.print_message("...dropping PK default value " + table_name + "  " + column_name)
+
+            sql = self._build_sql_to_drop_pk_default_value(table_name, column_name)
+            if sql is not None:
+                utils.execute(connection, sql)
+
+    def _build_sql_to_drop_pk_default_value(self, table_name, column_name):
+        sql = "alter table {table_name} alter column {column_name} drop default;".format(
+            table_name=table_name,
+            column_name=column_name,
+        )
+        return sql
 
     def _create_temporary_column(self, connection, *args, **kwargs):
         rows = kwargs['rows']
