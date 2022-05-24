@@ -208,7 +208,7 @@ class IdReplacer:
         self._enable_trigger(connection, *args, **kwargs)
 
     def _build_sql_to_add_default_value(self, table_name, column_name):
-        sql = "alter table if exists {table_name} alter column {column_name} set default gen_random_uuid();".format(
+        sql = 'alter table if exists {table_name} alter column "{column_name}" set default gen_random_uuid();'.format(
             table_name=table_name,
             column_name=column_name,
         )
@@ -224,14 +224,14 @@ class IdReplacer:
             table_name = self._build_table_name(table_schema, table_name)
             column_name = row['column_name']
 
-            Utils.print_message("...adding default vvalue to PK " + table_name + "." + column_name)
+            Utils.print_message("...adding default value to PK " + table_name + "." + column_name)
 
             sql = self._build_sql_to_add_default_value(table_name, column_name)
             if sql is not None:
                 utils.execute(connection, sql)
 
     def _build_sql_to_drop_default_value(self, table_name, column_name):
-        sql = "alter table if exists {table_name} alter column {column_name} drop default;".format(
+        sql = 'alter table if exists {table_name} alter column "{column_name}" drop default;'.format(
             table_name=table_name,
             column_name=column_name,
         )
@@ -251,9 +251,9 @@ class IdReplacer:
     ):
         sql = """
         update {table_name} a 
-        set {column_name} = x.{temp_name}::varchar
+        set "{column_name}" = x."{temp_name}"::varchar
         from {foreign_table_name} x
-        where a.{column_name}::varchar = x.{foreign_column_name}::varchar;
+        where a."{column_name}"::varchar = x."{foreign_column_name}"::varchar;
         """.format(
             table_name=table_name,
             temp_name=temp_name,
@@ -291,7 +291,7 @@ class IdReplacer:
 
     def _build_sql_to_alter_column_datatype(self, table_name, column_name, data_type):
         sql = """
-        alter table {table_name} alter column {column_name} type {data_type} using {column_name}::{data_type};
+        alter table {table_name} alter column "{column_name}" type {data_type} using "{column_name}"::{data_type};
         """.format(
             table_name=table_name,
             column_name=column_name,
@@ -301,8 +301,8 @@ class IdReplacer:
 
     def _build_sql_to_alter_column_to_uuid(self, table_name, column_name):
         sql = """
-        alter table {table_name} alter column {column_name} type uuid 
-        using cast(lpad(to_hex({column_name}), 32, '0') as uuid);
+        alter table {table_name} alter column "{column_name}" type uuid 
+        using cast(lpad(to_hex("{column_name}"), 32, '0') as uuid);
         """.format(
             table_name=table_name,
             column_name=column_name,
@@ -349,7 +349,7 @@ class IdReplacer:
                 utils.execute(connection, sql)
 
     def _build_sql_to_drop_constraint(self, table_name, constraint_name):
-        sql = 'alter table {table_name} drop constraint if exists "{constraint_name}";'.format(
+        sql = 'alter table {table_name} drop constraint "{constraint_name}";'.format(
             table_name=table_name,
             constraint_name=constraint_name,
         )
@@ -361,7 +361,7 @@ class IdReplacer:
     ):
         sql = """
         alter table {table_name} add constraint "{constraint_name}" 
-        foreign key ({column_name}) references {foreign_table_name} ({foreign_column_name})
+        foreign key ("{column_name}") references {foreign_table_name} ("{foreign_column_name}")
         match {match_option} on delete {delete_rule} on update {update_rule}; 
         """.format(
             table_name=table_name,
@@ -413,7 +413,7 @@ class IdReplacer:
                 utils.execute(connection, sql)
 
     def _build_sql_to_update_column(self, table_name, column_name, value):
-        sql = "update {table_name} set {column_name} = {value};".format(
+        sql = 'update {table_name} set "{column_name}" = {value};'.format(
             table_name=table_name,
             column_name=column_name,
             value=value,
@@ -523,7 +523,7 @@ class IdReplacer:
         return '%s.%s' % (schema_name, table_name)
 
     def _build_sql_to_create_column(self, table_name, column_name, data_type):
-        sql = "alter table {table_name} add column if not exists {column_name} {data_type};".format(
+        sql = 'alter table {table_name} add column if not exists "{column_name}" {data_type};'.format(
             table_name=table_name,
             column_name=column_name,
             data_type=data_type,
@@ -531,7 +531,7 @@ class IdReplacer:
         return sql
 
     def _build_sql_to_drop_column(self, table_name, column_name):
-        sql = "alter table {table_name} drop column if exists {column_name};".format(
+        sql = 'alter table {table_name} drop column if exists "{column_name}";'.format(
             table_name=table_name,
             column_name=column_name,
         )
@@ -570,7 +570,7 @@ class IdReplacer:
                 utils.execute(connection, sql)
 
     def _build_sql_to_drop_pk_default_value(self, table_name, column_name):
-        sql = "alter table {table_name} alter column {column_name} drop default;".format(
+        sql = 'alter table {table_name} alter column "{column_name}" drop default;'.format(
             table_name=table_name,
             column_name=column_name,
         )
