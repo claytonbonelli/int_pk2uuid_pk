@@ -28,11 +28,7 @@ from replace_id import IdReplacer
 class MyReplacer(IdReplacer):
     def set_up(self, connection, *args, **kwargs):
         utils = kwargs['utils']
-        rows = kwargs['rows']
-        sql = """
-        alter table if exists MyTable alter column my_column drop default;
-        drop trigger if exists my_trigger on MyTable;
-        """
+        sql = "create extension if not exists pgcrypto;"
         utils.execute(connection, sql)
 
 
